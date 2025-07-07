@@ -2,8 +2,8 @@ using Microsoft.AspNetCore.SignalR;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSingleton<ChatService>();
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<UsuariosService>();
 
 builder.Services.AddCors(opt => opt.AddPolicy("CorsPolicy", policy =>
 {
@@ -21,73 +21,109 @@ app.MapHub<ChatHub>("/chat");
 
 app.Run();
 
-class ChatHub(ChatService chatService) : Hub
+class ChatHub : Hub
 {
-    private readonly ChatService _chatService = chatService;
+    private readonly UsuariosService _usuariosService;
 
-    public async Task IncluirUsuario(string nome)
+    public ChatHub(UsuariosService usuariosService)
     {
-        try
-        {
-            _chatService.IncluirUsuario(nome);
-
-            // Notifica todos os outros que um novo usuário entrou
-            await Clients.AllExcept(Context.ConnectionId).SendAsync("UsuarioIncluido", nome);
-
-            // Envia lista atualizada apenas para o Caller
-            await Clients.Caller.SendAsync("UsuariosAtuais", _chatService.ObterUsuarios());
-        }
-        catch (Exception ex)
-        {
-            await Clients.Caller.SendAsync("ErroAoIncluirUsuario", ex.Message);
-        }
-
+        _usuariosService = usuariosService;
     }
 
+    public async Task CriarChat(string nomeUsuario)
+    {
+        string salaId = Guid.CreateVersion7().ToString();
+        var cToken = Context.ConnectionAborted;
 
-    public async Task EnviarMensagem(string nome, string mensagem)
+        _usuariosService.Adicionar(new UsuarioConectado
+        {
+            ConnectionId = Context.ConnectionId,
+            Nome = nomeUsuario,
+            SalaId = salaId
+        });
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, salaId, cToken);
+        await Clients.Caller.SendAsync("ReceberIdSala", salaId, cToken);
+        await Clients.Caller.SendAsync("UsuariosAtualizados", _usuariosService.ObterUsuariosPorSala(salaId), cToken);
+    }
+
+    public async Task EntrarChat(string nomeUsuario, string salaId)
+    {
+        var cToken = Context.ConnectionAborted;
+
+        if (_usuariosService.UsuarioExiste(nomeUsuario, salaId))
+        {
+            await Clients.Caller.SendAsync("ErroAoIncluirUsuario", "Usuário já está no chat", cToken);
+            return;
+        }
+
+        if (!_usuariosService.SalaExiste(salaId))
+        {
+            await Clients.Caller.SendAsync("ErroAoIncluirUsuario", "Sala não encontrada", cToken);
+            return;
+        }
+
+        _usuariosService.Adicionar(new UsuarioConectado
+        {
+            ConnectionId = Context.ConnectionId,
+            Nome = nomeUsuario,
+            SalaId = salaId
+        });
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, salaId, cToken);
+        await Clients.GroupExcept(salaId, Context.ConnectionId).SendAsync("UsuarioIncluido", nomeUsuario, cToken);
+        await Clients.Caller.SendAsync("ReceberIdSala", salaId, cToken);
+        await Clients.Group(salaId).SendAsync("UsuariosAtualizados", _usuariosService.ObterUsuariosPorSala(salaId), cToken);
+    }
+
+    public async Task EnviarMensagem(string nome, string mensagem, string sala)
     {
         var data = DateTime.Now.ToLongTimeString();
-        await Clients.All.SendAsync("MensagemRecebida", nome, mensagem, data);
+        var cToken = Context.ConnectionAborted;
+
+        await Clients.Group(sala).SendAsync("MensagemRecebida", nome, mensagem, data, cToken);
     }
 
-    public async Task RemoverUsuario(string nome)
+    public async Task RemoverUsuario(string nome, string salaId)
     {
-        _chatService.RemoverUsuario(nome);
-        await Clients.AllExcept(Context.ConnectionId).SendAsync("UsuarioRemovido", nome);
-    }
+        var cToken = Context.ConnectionAborted;
 
-    public async Task<List<string>> ObterUsuarios()
-    {
-        var usuarios = _chatService.ObterUsuarios();
-        return await Task.FromResult(usuarios);
+        _usuariosService.Remover(nome, salaId);
+        await Clients.Group(salaId).SendAsync("UsuarioRemovido", nome, cToken);
     }
 }
 
-class ChatService
+public class UsuarioConectado
 {
-    private readonly List<string> Usuarios = [];
+    public string ConnectionId = string.Empty;
+    public string Nome = string.Empty;
+    public string SalaId = string.Empty;
+}
 
-    public void IncluirUsuario(string nome)
+class UsuariosService
+{
+    private readonly List<UsuarioConectado> _usuarios = [];
+
+    public void Adicionar(UsuarioConectado usuario) => _usuarios.Add(usuario);
+
+    public void Remover(string nome, string salaId)
     {
-        if (string.IsNullOrWhiteSpace(nome))
-            throw new ArgumentException("Nome inválido.");
-
-        if (!Usuarios.Contains(nome, StringComparer.OrdinalIgnoreCase))
-            Usuarios.Add(nome);
-
-        else
-            throw new InvalidOperationException("Usuário já está na sala.");
-
+        var usuario = _usuarios.FirstOrDefault(u => u.Nome == nome && u.SalaId == salaId);
+        if (usuario != null)
+            _usuarios.Remove(usuario);
     }
 
-    public List<string> ObterUsuarios()
+    public List<string> ObterUsuariosPorSala(string salaId)
     {
-        return Usuarios;
+        return _usuarios
+            .Where(u => u.SalaId == salaId)
+            .Select(u => u.Nome)
+            .ToList();
     }
 
-    public void RemoverUsuario(string nome)
-    {
-        Usuarios.Remove(nome);
-    }
+    public bool SalaExiste(string salaId) =>
+        _usuarios.Any(u => u.SalaId == salaId);
+
+    public bool UsuarioExiste(string nome, string salaId) =>
+        _usuarios.Any(u => u.SalaId == salaId && u.Nome.Equals(nome, StringComparison.OrdinalIgnoreCase));
 }

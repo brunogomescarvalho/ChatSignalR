@@ -32,13 +32,35 @@
 </head>
 
 <body class="container">
-    <h2 class="text-primary">Chat SignalR</h2>
+    <h2 class="text-primary mt-3">Chat SignalR</h2>
     <hr>
+
     <!-- Tela de login -->
     <div id="loginGroup" class="row">
-        <div class="col-lg-6 col-sm-12 d-flex">
-            <input class="form-control" id="nome" placeholder="Seu nome" />
-            <button class="btn btn-success" onclick="entrarSala()">Entrar</button>
+        <div class="mb-3">
+            <label class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="tipoChat" value="novo" checked
+                    onchange="alternarTipoChat()">
+                Novo chat
+            </label>
+            <label class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="tipoChat" value="existente"
+                    onchange="alternarTipoChat()">
+                Chat existente
+            </label>
+        </div>
+
+        <!-- Novo chat -->
+        <div id="novoChat" class="col-lg-6 col-sm-12">
+            <input class="form-control me-2" id="nomeNovo" placeholder="Seu nome" />
+            <button class="btn btn-success" onclick="entrarSala('novo')">Entrar</button>
+        </div>
+
+        <!-- Chat existente -->
+        <div id="chatExistente" class="col-lg-6 col-sm-12" style="display: none;">
+            <input class="form-control me-2" id="nomeExistente" placeholder="Seu nome" />
+            <input class="form-control me-2" id="idSala" placeholder="ID da sala" />
+            <button class="btn btn-success" onclick="entrarSala('existente')">Entrar</button>
         </div>
     </div>
 
@@ -46,26 +68,34 @@
     <div id="chatGroup" class="row justify-content-center" style="display: none;">
         <div class="col-lg-6 col-sm-12">
             <div id="chat"></div>
-            <div class="col-12 d-flex">
-                <input id="mensagem" class="form-control" placeholder="Digite uma mensagem" style="width:300px;" />
+            <div class="d-flex">
+                <input id="mensagem" class="form-control me-2" placeholder="Digite uma mensagem"
+                    style="width: 300px;" />
                 <div class="actions">
-                    <button tabindex="0" class="btn btn-primary" onclick="enviarMensagem()">Enviar</button>
+                    <button class="btn btn-primary" onclick="enviarMensagem()">Enviar</button>
                     <button class="btn btn-outline-danger" onclick="sairSala()">Sair</button>
                 </div>
             </div>
         </div>
         <div class="col-lg-3 col-sm-12">
-            <h3 class="text-primary fs-6">Participantes</h3>
             <div id="usuarios"></div>
+            <button class="btn btn-outline-secondary mb-2" onclick="copiarLink()">Copiar link da sala</button>
+            <span class="text-muted fst-italic" id="linkCopiado"></span>
         </div>
     </div>
 
     <script>
+        // Variáveis globais
         let connection = null;
         let nomeAtual = null;
+        let salaAtual = null;
         let sucessoLogin;
 
-        // Inicialização
+        //Inicialização
+        iniciarHub();
+
+        alternarTipoChat();
+
         async function iniciarHub() {
             if (!connection) {
                 connection = new signalR.HubConnectionBuilder()
@@ -82,39 +112,23 @@
             }
         }
 
-        // Eventos SignalR
-        function registrarEventosHub() {
-            connection.on('UsuarioIncluido', nome => {
-                adicionarUsuario(nome);
-                appendMensagem(`<b>${nome}</b> entrou na sala.`);
-            });
-
-            connection.on('UsuariosAtuais', usuarios => {
-                atualizarUsuarios(usuarios);
-            });
-
-            connection.on('MensagemRecebida', (nome, mensagem, data) => {
-                appendMensagem(`<b>${nome}</b> <small class="text-muted fst-italic">${data}</small>  ${mensagem}`);
-
-            });
-
-            connection.on('UsuarioRemovido', nome => {
-                removerUsuario(nome);
-                appendMensagem(`<b>${nome}</b> saiu da sala.`);
-            });
-
-            connection.on("ErroAoIncluirUsuario", erro => {
-                sucessoLogin = false;
-                alert(erro)
-            })
-        }
-
-        // Ações principais
-        async function entrarSala() {
+        //Funções principais
+        async function entrarSala(tipo) {
             sucessoLogin = true;
-            nomeAtual = obterInput();
+            nomeAtual = obterInputNome(tipo);
 
-            await connection.invoke('IncluirUsuario', nomeAtual);
+            if (!nomeAtual) return alert('Informe seu nome');
+
+            switch (tipo) {
+                case "novo":
+                    await connection.invoke('CriarChat', nomeAtual);
+                    break;
+                case "existente":
+                    salaAtual = obterIdSala();
+                    if (!salaAtual) return alert('Informe o ID da sala');
+                    await connection.invoke('EntrarChat', nomeAtual, salaAtual);
+                    break;
+            }
 
             if (sucessoLogin) {
                 exibirChat(true);
@@ -124,31 +138,80 @@
 
         async function enviarMensagem() {
             const mensagem = document.getElementById('mensagem').value.trim();
-            if (mensagem) {
-                await connection.invoke('EnviarMensagem', nomeAtual, mensagem);
-                document.getElementById('mensagem').value = '';
-            }
+            if (!mensagem) return;
+
+            await connection.invoke('EnviarMensagem', nomeAtual, mensagem, salaAtual);
+            document.getElementById('mensagem').value = '';
         }
 
         async function sairSala() {
             if (connection && nomeAtual) {
-                await connection.invoke('RemoverUsuario', nomeAtual);
+                await connection.invoke('RemoverUsuario', nomeAtual, salaAtual);
                 appendMensagem(`<i>Você saiu da sala</i>`);
 
                 setTimeout(() => {
                     exibirChat(false);
-                    document.getElementById('nome').value = '';
+                    document.getElementById('nomeNovo').value = '';
+                    document.getElementById('nomeExistente').value = '';
+                    document.getElementById('chat').innerHTML = ''
                     nomeAtual = null;
+                    salaAtual = null;
                 }, 500);
             }
         }
 
-        function obterInput() {
-            let input = document.getElementById('nome').value.trim();
-            return input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
+        function copiarLink() {
+            const span = document.getElementById('linkCopiado')
+            navigator.clipboard.writeText(salaAtual)
+                .then(() => span.innerText = " Copiado ")
+                .catch(() => span.innerText = " Erro ao copiar link ")
+            setTimeout(() => span.innerText = "", 1000)
         }
 
-        // Manipulação de UI
+        //Eventos SignalR
+        function registrarEventosHub() {
+            connection.on('UsuarioIncluido', nome => {
+                appendMensagem(`<b>${nome}</b> entrou na sala.`);
+            });
+
+            connection.on('UsuariosAtualizados', atualizarUsuarios);
+
+            connection.on('MensagemRecebida', (nome, mensagem, data) => {
+                appendMensagem(`<b>${nome}</b> <small class="text-muted fst-italic">${data}</small> ${mensagem}`);
+            });
+
+            connection.on('UsuarioRemovido', nome => {
+                removerUsuario(nome);
+                appendMensagem(`<b>${nome}</b> saiu da sala.`);
+            });
+
+            connection.on("ErroAoIncluirUsuario", erro => {
+                sucessoLogin = false;
+                alert(erro);
+            });
+
+            connection.on("ReceberIdSala", idSala => {
+                salaAtual = idSala;
+            });
+        }
+
+        //Funções auxiliares
+        function obterInputNome(tipo) {
+            const inputId = tipo === 'novo' ? 'nomeNovo' : 'nomeExistente';
+            let nome = document.getElementById(inputId).value.trim();
+            return nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase();
+        }
+
+        function obterIdSala() {
+            return document.getElementById('idSala').value.trim();
+        }
+
+        function alternarTipoChat() {
+            const tipo = document.querySelector('input[name="tipoChat"]:checked').value;
+            document.getElementById('novoChat').style.display = tipo === 'novo' ? 'flex' : 'none';
+            document.getElementById('chatExistente').style.display = tipo === 'existente' ? 'flex' : 'none';
+        }
+
         function appendMensagem(msg) {
             const chat = document.getElementById('chat');
             chat.innerHTML += msg + '<br />';
@@ -156,8 +219,18 @@
         }
 
         function atualizarUsuarios(usuarios) {
-            document.getElementById('usuarios').innerText = usuarios.join('\n');
+            const container = document.getElementById('usuarios');
+            let html = '<h3 class="text-primary fs-6">Participantes</h3><hr>';
+
+            html += '<ul class="list-unstyled mb-0">';
+            usuarios.forEach(nome => {
+                html += `<li class="text-dark">${nome}</li>`;
+            });
+            html += '</ul>';
+
+            container.innerHTML = html;
         }
+
 
         function adicionarUsuario(nome) {
             const lista = document.getElementById('usuarios');
@@ -173,17 +246,13 @@
         function exibirChat(exibir) {
             document.getElementById('loginGroup').style.display = exibir ? 'none' : 'flex';
             document.getElementById('chatGroup').style.display = exibir ? 'flex' : 'none';
-            if (exibir) document.getElementById('mensagem').focus()
+            if (exibir) setTimeout(() => document.getElementById('mensagem').focus(), 100);
         }
 
-        // Inicialização e saída
-        iniciarHub();
-
-        document.getElementById("nome").focus();
-
+        //Antes de sair
         window.addEventListener('beforeunload', async () => {
             if (connection && nomeAtual) {
-                await connection.invoke('RemoverUsuario', nomeAtual);
+                await sairSala()
             }
         });
     </script>
