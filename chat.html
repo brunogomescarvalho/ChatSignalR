@@ -93,7 +93,6 @@
 
         //Inicialização
         iniciarHub();
-
         alternarTipoChat();
 
         async function iniciarHub() {
@@ -147,12 +146,11 @@
         async function sairSala() {
             if (connection && nomeAtual) {
                 await connection.invoke('RemoverUsuario', nomeAtual, salaAtual);
-                appendMensagem(`<i>Você saiu da sala</i>`);
-
                 setTimeout(() => {
                     exibirChat(false);
                     document.getElementById('nomeNovo').value = '';
                     document.getElementById('nomeExistente').value = '';
+                    document.getElementById('idSala').value = '';
                     document.getElementById('chat').innerHTML = ''
                     nomeAtual = null;
                     salaAtual = null;
@@ -193,6 +191,10 @@
             connection.on("ReceberIdSala", idSala => {
                 salaAtual = idSala;
             });
+
+            connection.on("SalaEncerrada", msg => {
+                alert(msg)
+            })
         }
 
         //Funções auxiliares

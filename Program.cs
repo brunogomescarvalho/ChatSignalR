@@ -89,7 +89,11 @@ class ChatHub : Hub
         var cToken = Context.ConnectionAborted;
 
         _usuariosService.Remover(nome, salaId);
-        await Clients.Group(salaId).SendAsync("UsuarioRemovido", nome, cToken);
+        await Clients.GroupExcept(salaId, Context.ConnectionId).SendAsync("UsuarioRemovido", nome, cToken);
+
+        if (_usuariosService.ObterUsuariosPorSala(salaId).Count == 0)
+            await Clients.Group(salaId).SendAsync("SalaEncerrada", "A sala foi encerrada", cToken);
+
     }
 }
 
