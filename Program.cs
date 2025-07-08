@@ -32,15 +32,24 @@ class ChatHub : Hub
 
     public async Task CriarChat(string nomeUsuario)
     {
-        string salaId = Guid.CreateVersion7().ToString();
+        string salaId = Guid.NewGuid().ToString();
         var cToken = Context.ConnectionAborted;
 
-        _usuariosService.Adicionar(new UsuarioConectado
+        UsuarioConectado usuario = new()
         {
             ConnectionId = Context.ConnectionId,
             Nome = nomeUsuario,
             SalaId = salaId
-        });
+        };
+
+        var erros = usuario.Validar();
+        if (erros.Count != 0)
+        {
+            await Clients.Caller.SendAsync("ErroAoIncluirUsuario", string.Join("\n", erros), cToken);
+            return;
+        }
+
+        _usuariosService.Adicionar(usuario);
 
         await Groups.AddToGroupAsync(Context.ConnectionId, salaId, cToken);
         await Clients.Caller.SendAsync("ReceberIdSala", salaId, cToken);
@@ -50,6 +59,20 @@ class ChatHub : Hub
     public async Task EntrarChat(string nomeUsuario, string salaId)
     {
         var cToken = Context.ConnectionAborted;
+
+        UsuarioConectado usuario = new()
+        {
+            ConnectionId = Context.ConnectionId,
+            Nome = nomeUsuario,
+            SalaId = salaId
+        };
+
+        var erros = usuario.Validar();
+        if (erros.Count != 0)
+        {
+            await Clients.Caller.SendAsync("ErroAoIncluirUsuario", string.Join("\n", erros), cToken);
+            return;
+        }
 
         if (_usuariosService.UsuarioExiste(nomeUsuario, salaId))
         {
@@ -63,12 +86,7 @@ class ChatHub : Hub
             return;
         }
 
-        _usuariosService.Adicionar(new UsuarioConectado
-        {
-            ConnectionId = Context.ConnectionId,
-            Nome = nomeUsuario,
-            SalaId = salaId
-        });
+        _usuariosService.Adicionar(usuario);
 
         await Groups.AddToGroupAsync(Context.ConnectionId, salaId, cToken);
         await Clients.GroupExcept(salaId, Context.ConnectionId).SendAsync("UsuarioIncluido", nomeUsuario, cToken);
@@ -102,6 +120,20 @@ public class UsuarioConectado
     public string ConnectionId = string.Empty;
     public string Nome = string.Empty;
     public string SalaId = string.Empty;
+
+
+    public List<string> Validar()
+    {
+        var erros = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(Nome))
+            erros.Add("O nome do usuário não pode ser vazio.");
+
+        if (string.IsNullOrWhiteSpace(SalaId))
+            erros.Add("O ID da sala não pode ser vazio.");
+
+        return erros;
+    }
 }
 
 class UsuariosService

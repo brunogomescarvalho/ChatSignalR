@@ -68,7 +68,7 @@
     <div id="chatGroup" class="row justify-content-center" style="display: none;">
         <div class="col-lg-6 col-sm-12">
             <div id="chat"></div>
-            <div class="d-flex">
+            <div class="d-flex my-2">
                 <input id="mensagem" class="form-control me-2" placeholder="Digite uma mensagem"
                     style="width: 300px;" />
                 <div class="actions">
@@ -79,7 +79,7 @@
         </div>
         <div class="col-lg-3 col-sm-12">
             <div id="usuarios"></div>
-            <button class="btn btn-outline-secondary mb-2" onclick="copiarLink()">Copiar link da sala</button>
+            <button class="btn btn-outline-secondary mb-2" onclick="copiarLink()">Copiar Id da sala</button>
             <span class="text-muted fst-italic" id="linkCopiado"></span>
         </div>
     </div>
@@ -111,23 +111,71 @@
             }
         }
 
+        // Eventos SignalR
+        function registrarEventosHub() {
+            connection.on('UsuarioIncluido', usuarioEntrou);
+            connection.on('UsuariosAtualizados', atualizarUsuarios);
+            connection.on('MensagemRecebida', mensagemRecebida);
+            connection.on('UsuarioRemovido', usuarioSaiu);
+            connection.on('ErroAoIncluirUsuario', erroAoIncluirUsuario);
+            connection.on('ReceberIdSala', receberIdSala);
+            connection.on('SalaEncerrada', alert);
+        }
+
+        // Funções eventos SignalR
+        function usuarioEntrou(nome) {
+            appendMensagem(`<b>${nome}</b> entrou na sala.`);
+        }
+
+        function usuarioSaiu(nome) {
+            removerUsuario(nome);
+            appendMensagem(`<b>${nome}</b> saiu da sala.`);
+        }
+
+        function mensagemRecebida(nome, mensagem, data) {
+            appendMensagem(`<b>${nome}</b> <small class="text-muted fst-italic">${data}</small> ${mensagem}`);
+        }
+
+        function erroAoIncluirUsuario(erro) {
+            sucessoLogin = false;
+            alert(erro);
+        }
+
+        function receberIdSala(idSala) {
+            salaAtual = idSala;
+        }
+
+        function atualizarUsuarios(usuarios) {
+            const container = document.getElementById('usuarios');
+            let html = '<h3 class="text-primary fs-6">Participantes</h3><hr>';
+
+            html += '<ul class="list-unstyled mb-0">';
+            usuarios.forEach(nome => {
+                html += `<li class="text-dark">${nome}</li>`;
+            });
+            html += '</ul>';
+
+            container.innerHTML = html;
+        }
+
         //Funções principais
         async function entrarSala(tipo) {
             sucessoLogin = true;
-            nomeAtual = obterInputNome(tipo);
 
-            if (!nomeAtual) return alert('Informe seu nome');
-
-            switch (tipo) {
-                case "novo":
-                    await connection.invoke('CriarChat', nomeAtual);
-                    break;
-                case "existente":
-                    salaAtual = obterIdSala();
-                    if (!salaAtual) return alert('Informe o ID da sala');
-                    await connection.invoke('EntrarChat', nomeAtual, salaAtual);
-                    break;
+            const salaExistente = async () => {
+                nomeAtual = obterInputNome(tipo)
+                salaAtual = obterIdSala()
+                await connection.invoke('EntrarChat', nomeAtual, salaAtual)
             }
+
+            const novaSala = async () => {
+                nomeAtual = obterInputNome(tipo)
+                await connection.invoke('CriarChat', nomeAtual);
+            }
+
+            const acao = tipo == "novo" ? novaSala : salaExistente
+
+            await acao()
 
             if (sucessoLogin) {
                 exibirChat(true);
@@ -166,37 +214,6 @@
             setTimeout(() => span.innerText = "", 1000)
         }
 
-        //Eventos SignalR
-        function registrarEventosHub() {
-            connection.on('UsuarioIncluido', nome => {
-                appendMensagem(`<b>${nome}</b> entrou na sala.`);
-            });
-
-            connection.on('UsuariosAtualizados', atualizarUsuarios);
-
-            connection.on('MensagemRecebida', (nome, mensagem, data) => {
-                appendMensagem(`<b>${nome}</b> <small class="text-muted fst-italic">${data}</small> ${mensagem}`);
-            });
-
-            connection.on('UsuarioRemovido', nome => {
-                removerUsuario(nome);
-                appendMensagem(`<b>${nome}</b> saiu da sala.`);
-            });
-
-            connection.on("ErroAoIncluirUsuario", erro => {
-                sucessoLogin = false;
-                alert(erro);
-            });
-
-            connection.on("ReceberIdSala", idSala => {
-                salaAtual = idSala;
-            });
-
-            connection.on("SalaEncerrada", msg => {
-                alert(msg)
-            })
-        }
-
         //Funções auxiliares
         function obterInputNome(tipo) {
             const inputId = tipo === 'novo' ? 'nomeNovo' : 'nomeExistente';
@@ -220,20 +237,6 @@
             chat.scrollTop = chat.scrollHeight;
         }
 
-        function atualizarUsuarios(usuarios) {
-            const container = document.getElementById('usuarios');
-            let html = '<h3 class="text-primary fs-6">Participantes</h3><hr>';
-
-            html += '<ul class="list-unstyled mb-0">';
-            usuarios.forEach(nome => {
-                html += `<li class="text-dark">${nome}</li>`;
-            });
-            html += '</ul>';
-
-            container.innerHTML = html;
-        }
-
-
         function adicionarUsuario(nome) {
             const lista = document.getElementById('usuarios');
             lista.innerText += `\n${nome}`;
@@ -253,9 +256,7 @@
 
         //Antes de sair
         window.addEventListener('beforeunload', async () => {
-            if (connection && nomeAtual) {
-                await sairSala()
-            }
+            await sairSala()
         });
     </script>
 </body>
