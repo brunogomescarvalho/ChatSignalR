@@ -9,7 +9,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
     <style>
         body {
-            font-family: Arial, sans-serif !important;
             background-color: #efefef;
         }
 
@@ -24,15 +23,11 @@
             margin-bottom: 10px;
         }
 
-        input,
-        button {
-            margin: 2px;
-        }
     </style>
 </head>
 
 <body class="container">
-    <h2 class="text-primary mt-3">Chat SignalR</h2>
+    <h2 class="text-primary mt-3 fs-4">Chat SignalR</h2>
     <hr>
 
     <!-- Tela de login -->
@@ -94,6 +89,7 @@
         //Inicialização
         iniciarHub();
         alternarTipoChat();
+        teclaEnterEvent();
 
         async function iniciarHub() {
             if (!connection) {
@@ -192,18 +188,16 @@
         }
 
         async function sairSala() {
-            if (connection && nomeAtual) {
-                await connection.invoke('RemoverUsuario', nomeAtual, salaAtual);
-                setTimeout(() => {
-                    exibirChat(false);
-                    document.getElementById('nomeNovo').value = '';
-                    document.getElementById('nomeExistente').value = '';
-                    document.getElementById('idSala').value = '';
-                    document.getElementById('chat').innerHTML = ''
-                    nomeAtual = null;
-                    salaAtual = null;
-                }, 500);
-            }
+            await connection.invoke('RemoverUsuario', nomeAtual, salaAtual);
+            setTimeout(() => {
+                exibirChat(false);
+                document.getElementById('nomeNovo').value = '';
+                document.getElementById('nomeExistente').value = '';
+                document.getElementById('idSala').value = '';
+                document.getElementById('chat').innerHTML = ''
+                nomeAtual = null;
+                salaAtual = null;
+            }, 500);
         }
 
         function copiarLink() {
@@ -212,6 +206,15 @@
                 .then(() => span.innerText = " Copiado ")
                 .catch(() => span.innerText = " Erro ao copiar link ")
             setTimeout(() => span.innerText = "", 1000)
+        }
+
+        function teclaEnterEvent() {
+            document.getElementById('mensagem').addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    enviarMensagem();
+                }
+            });
         }
 
         //Funções auxiliares
