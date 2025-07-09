@@ -46,7 +46,7 @@ class ChatHub(UsuariosService usuariosService) : Hub
         var erros = usuario.Validar();
         if (erros.Count != 0)
         {
-            await Clients.Caller.SendAsync("ErroAoIncluirUsuario", string.Join("\n", erros), cToken);
+            await ErroAoInserirUsuario(string.Join("\n", erros), cToken);
             return;
         }
 
@@ -71,19 +71,19 @@ class ChatHub(UsuariosService usuariosService) : Hub
         var erros = usuario.Validar();
         if (erros.Count != 0)
         {
-            await EnviarErro(string.Join("\n", erros), cToken);
+            await ErroAoInserirUsuario(string.Join("\n", erros), cToken);
             return;
         }
 
         if (_usuariosService.UsuarioExiste(nomeUsuario, salaId))
         {
-            await EnviarErro("Usuário já está no chat", cToken);
+            await ErroAoInserirUsuario("Usuário já está no chat", cToken);
             return;
         }
 
         if (!_usuariosService.SalaExiste(salaId))
         {
-            await EnviarErro("Sala não encontrada", cToken);
+            await ErroAoInserirUsuario("Sala não encontrada", cToken);
             return;
         }
 
@@ -97,8 +97,9 @@ class ChatHub(UsuariosService usuariosService) : Hub
 
     public async Task EnviarMensagem(string nome, string mensagem, string sala)
     {
-        var data = DateTime.Now.ToLongTimeString();
         var cToken = Context.ConnectionAborted;
+
+        var data = DateTime.Now.ToLongTimeString();
 
         await Clients.Group(sala).SendAsync("MensagemRecebida", nome, mensagem, data, cToken);
     }
@@ -108,6 +109,7 @@ class ChatHub(UsuariosService usuariosService) : Hub
         var cToken = Context.ConnectionAborted;
 
         _usuariosService.Remover(nome, salaId);
+
         await Clients.GroupExcept(salaId, Context.ConnectionId).SendAsync("UsuarioRemovido", nome, cToken);
 
         if (_usuariosService.ObterUsuariosPorSala(salaId).Count == 0)
@@ -115,7 +117,7 @@ class ChatHub(UsuariosService usuariosService) : Hub
 
     }
 
-    private async Task EnviarErro(string erro, CancellationToken cToken)
+    private async Task ErroAoInserirUsuario(string erro, CancellationToken cToken)
     {
         await Clients.Caller.SendAsync("ErroAoIncluirUsuario", erro, cToken);
     }
@@ -150,7 +152,7 @@ class UsuariosService
     public void Remover(string nome, string salaId)
     {
         var usuario = _usuarios.FirstOrDefault(u => u.Nome == nome && u.SalaId == salaId);
-        if (usuario != null)
+        if (usuario is not null)
             _usuarios.Remove(usuario);
     }
 

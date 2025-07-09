@@ -85,6 +85,9 @@
         let salaAtual = null;
         let sucessoLogin;
 
+        const isNewChat = (tipo) => tipo === "novo"
+        const isExistingChat = (tipo) => tipo === "existente"
+
         //Inicialização
         iniciarHub();
         alternarTipoChat();
@@ -114,7 +117,7 @@
             connection.on('UsuarioRemovido', usuarioSaiu);
             connection.on('ErroAoIncluirUsuario', erroAoIncluirUsuario);
             connection.on('ReceberIdSala', receberIdSala);
-            connection.on('SalaEncerrada', msg => alert(msg));
+            connection.on('SalaEncerrada', salaEncerrada);
         }
 
         // Funções eventos SignalR
@@ -138,6 +141,10 @@
 
         function receberIdSala(idSala) {
             salaAtual = idSala;
+        }
+
+        function salaEncerrada(msg) {
+            appendMensagem(`<b>${msg}</b>`);
         }
 
         function atualizarUsuarios(usuarios) {
@@ -168,7 +175,7 @@
                 await connection.invoke('CriarChat', nomeAtual);
             }
 
-            const acao = tipo == "novo" ? novaSala : salaExistente
+            const acao = isNewChat(tipo) ? novaSala : salaExistente
 
             await acao()
 
@@ -188,8 +195,8 @@
 
         async function sairSala() {
             if (connection && nomeAtual && salaAtual) {
-                await connection.invoke('RemoverUsuario', nomeAtual, salaAtual);
                 appendMensagem(`<i>Você saiu da sala</i>`);
+                await connection.invoke('RemoverUsuario', nomeAtual, salaAtual);
                 setTimeout(() => {
                     exibirChat(false);
                     document.getElementById('nomeNovo').value = '';
@@ -198,7 +205,7 @@
                     document.getElementById('chat').innerHTML = ''
                     nomeAtual = null;
                     salaAtual = null;
-                }, 500);
+                }, 2000);
             }
         }
 
@@ -218,9 +225,9 @@
             });
         }
 
-        //Funções auxiliares
+        //Funções auxiliares 
         function obterInputNome(tipo) {
-            const inputId = tipo === 'novo' ? 'nomeNovo' : 'nomeExistente';
+            const inputId = isNewChat(tipo) ? 'nomeNovo' : 'nomeExistente';
             let nome = document.getElementById(inputId).value.trim();
             return nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase();
         }
@@ -231,8 +238,8 @@
 
         function alternarTipoChat() {
             const tipo = document.querySelector('input[name="tipoChat"]:checked').value;
-            document.getElementById('novoChat').style.display = tipo === 'novo' ? 'flex' : 'none';
-            document.getElementById('chatExistente').style.display = tipo === 'existente' ? 'flex' : 'none';
+            document.getElementById('novoChat').style.display = isNewChat(tipo) ? 'flex' : 'none';
+            document.getElementById('chatExistente').style.display = isExistingChat(tipo) ? 'flex' : 'none';
         }
 
         function appendMensagem(msg) {
