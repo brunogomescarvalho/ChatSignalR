@@ -22,7 +22,6 @@
             overflow-y: auto;
             margin-bottom: 10px;
         }
-
     </style>
 </head>
 
@@ -115,7 +114,7 @@
             connection.on('UsuarioRemovido', usuarioSaiu);
             connection.on('ErroAoIncluirUsuario', erroAoIncluirUsuario);
             connection.on('ReceberIdSala', receberIdSala);
-            connection.on('SalaEncerrada', alert);
+            connection.on('SalaEncerrada', msg => alert(msg));
         }
 
         // Funções eventos SignalR
@@ -188,23 +187,25 @@
         }
 
         async function sairSala() {
-            await connection.invoke('RemoverUsuario', nomeAtual, salaAtual);
-            setTimeout(() => {
-                exibirChat(false);
-                document.getElementById('nomeNovo').value = '';
-                document.getElementById('nomeExistente').value = '';
-                document.getElementById('idSala').value = '';
-                document.getElementById('chat').innerHTML = ''
-                nomeAtual = null;
-                salaAtual = null;
-            }, 500);
+            if (connection && nomeAtual && salaAtual) {
+                await connection.invoke('RemoverUsuario', nomeAtual, salaAtual);
+                appendMensagem(`<i>Você saiu da sala</i>`);
+                setTimeout(() => {
+                    exibirChat(false);
+                    document.getElementById('nomeNovo').value = '';
+                    document.getElementById('nomeExistente').value = '';
+                    document.getElementById('idSala').value = '';
+                    document.getElementById('chat').innerHTML = ''
+                    nomeAtual = null;
+                    salaAtual = null;
+                }, 500);
+            }
         }
 
         function copiarLink() {
             const span = document.getElementById('linkCopiado')
             navigator.clipboard.writeText(salaAtual)
                 .then(() => span.innerText = " Copiado ")
-                .catch(() => span.innerText = " Erro ao copiar link ")
             setTimeout(() => span.innerText = "", 1000)
         }
 

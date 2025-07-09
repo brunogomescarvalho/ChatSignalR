@@ -1,34 +1,35 @@
 using Microsoft.AspNetCore.SignalR;
 
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddSignalR();
-builder.Services.AddSingleton<UsuariosService>();
-
-builder.Services.AddCors(opt => opt.AddPolicy("CorsPolicy", policy =>
+internal class Program
 {
-    policy.WithOrigins("http://127.0.0.1:5500")
-          .AllowAnyMethod()
-          .AllowAnyHeader()
-          .AllowCredentials();
-}));
-
-var app = builder.Build();
-
-app.UseCors("CorsPolicy");
-
-app.MapHub<ChatHub>("/chat");
-
-app.Run();
-
-class ChatHub : Hub
-{
-    private readonly UsuariosService _usuariosService;
-
-    public ChatHub(UsuariosService usuariosService)
+    private static void Main(string[] args)
     {
-        _usuariosService = usuariosService;
+        var builder = WebApplication.CreateBuilder(args);
+
+        builder.Services.AddSignalR();
+        builder.Services.AddSingleton<UsuariosService>();
+
+        builder.Services.AddCors(opt => opt.AddPolicy("CorsPolicy", policy =>
+        {
+            policy.WithOrigins("http://127.0.0.1:5500")
+                  .AllowAnyMethod()
+                  .AllowAnyHeader()
+                  .AllowCredentials();
+        }));
+
+        var app = builder.Build();
+
+        app.UseCors("CorsPolicy");
+
+        app.MapHub<ChatHub>("/chat");
+
+        app.Run();
     }
+}
+
+class ChatHub(UsuariosService usuariosService) : Hub
+{
+    private readonly UsuariosService _usuariosService = usuariosService;
 
     public async Task CriarChat(string nomeUsuario)
     {
@@ -70,19 +71,19 @@ class ChatHub : Hub
         var erros = usuario.Validar();
         if (erros.Count != 0)
         {
-            await Clients.Caller.SendAsync("ErroAoIncluirUsuario", string.Join("\n", erros), cToken);
+            await EnviarErro(string.Join("\n", erros), cToken);
             return;
         }
 
         if (_usuariosService.UsuarioExiste(nomeUsuario, salaId))
         {
-            await Clients.Caller.SendAsync("ErroAoIncluirUsuario", "Usuário já está no chat", cToken);
+            await EnviarErro("Usuário já está no chat", cToken);
             return;
         }
 
         if (!_usuariosService.SalaExiste(salaId))
         {
-            await Clients.Caller.SendAsync("ErroAoIncluirUsuario", "Sala não encontrada", cToken);
+            await EnviarErro("Sala não encontrada", cToken);
             return;
         }
 
@@ -110,17 +111,21 @@ class ChatHub : Hub
         await Clients.GroupExcept(salaId, Context.ConnectionId).SendAsync("UsuarioRemovido", nome, cToken);
 
         if (_usuariosService.ObterUsuariosPorSala(salaId).Count == 0)
-            await Clients.Group(salaId).SendAsync("SalaEncerrada", "A sala foi encerrada", cToken);
+            await Clients.Caller.SendAsync("SalaEncerrada", "A sala foi encerrada", cToken);
 
+    }
+
+    private async Task EnviarErro(string erro, CancellationToken cToken)
+    {
+        await Clients.Caller.SendAsync("ErroAoIncluirUsuario", erro, cToken);
     }
 }
 
-public class UsuarioConectado
+internal class UsuarioConectado
 {
     public string ConnectionId = string.Empty;
     public string Nome = string.Empty;
     public string SalaId = string.Empty;
-
 
     public List<string> Validar()
     {
